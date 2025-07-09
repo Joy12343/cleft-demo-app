@@ -2,6 +2,9 @@
 
 A web application for facial inpainting using deep learning models, built with Next.js frontend and Flask backend. (TODO: add details later)
 
+![Alt text](assets/before.png)
+![Alt text](assets/after.png)
+
 ## Project Structure
 
 ```
