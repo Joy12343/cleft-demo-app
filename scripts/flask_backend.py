@@ -60,7 +60,7 @@ def cleanup_old_files():
                             os.remove(filepath)
         except Exception as e:
             print(f"Cleanup error: {e}")
-        
+
         time.sleep(3600)  # Run every hour
 
 # Start cleanup thread
@@ -73,85 +73,85 @@ def process_images():
         # Check if files are present
         if 'source' not in request.files or 'mask' not in request.files:
             return jsonify({'error': 'Both source and mask images are required'}), 400
-        
+
         source_file = request.files['source']
         mask_file = request.files['mask']
-        
+
         # Validate files
         if source_file.filename == '' or mask_file.filename == '':
             return jsonify({'error': 'No files selected'}), 400
-        
+
         if not (allowed_file(source_file.filename) and allowed_file(mask_file.filename)):
             return jsonify({'error': 'Invalid file type. Please upload PNG, JPG, or JPEG files'}), 400
-        
+
         # Generate unique session ID
         session_id = str(uuid.uuid4())
         session_folder = os.path.join(UPLOAD_FOLDER, session_id)
         os.makedirs(session_folder, exist_ok=True)
-        
+
         # Save uploaded files
         source_filename = secure_filename(f"source_{source_file.filename}")
         mask_filename = secure_filename(f"mask_{mask_file.filename}")
-        
+
         source_path = os.path.join(session_folder, source_filename)
         mask_path = os.path.join(session_folder, mask_filename)
-        
+
         source_file.save(source_path)
         mask_file.save(mask_path)
-        
+
         # Process images using the wrapper functions
         try:
             # Convert PNGs to JPGs if needed
             convert_pngs_to_jpgs(session_folder)
-            
+
             # Update filenames if they were converted
             for f in os.listdir(session_folder):
                 if f.startswith('source_') and f.endswith('.jpg'):
                     source_filename = f
                 elif f.startswith('mask_') and f.endswith('.jpg'):
                     mask_filename = f
-            
+
             # Generate landmarks
             landmark_jpg, landmark_txt = generate_landmarks(session_folder, source_filename)
-            
+
             # Generate binary mask
             binary_mask = generate_binary_mask(session_folder, mask_filename)
-            
+
             # Run the inpainting process
             result_path = run_inpainting_process(
-                session_folder, 
-                source_filename, 
-                binary_mask, 
+                session_folder,
+                source_filename,
+                binary_mask,
                 landmark_txt
             )
-            
+
             # Move results to results folder
             result_session_folder = os.path.join(RESULTS_FOLDER, session_id)
             os.makedirs(result_session_folder, exist_ok=True)
-            
+
             # Copy result files
             final_result_path = os.path.join(result_session_folder, 'result.jpg')
             final_landmark_path = os.path.join(result_session_folder, 'landmarks.jpg')
-            
+
             shutil.copy(result_path, final_result_path)
             shutil.copy(os.path.join(session_folder, landmark_jpg), final_landmark_path)
-            
+
             # Clean up session folder
             shutil.rmtree(session_folder)
-            
+
             return jsonify({
                 'success': True,
                 'session_id': session_id,
                 'result_url': f'/api/download/{session_id}/result.jpg',
                 'landmark_url': f'/api/download/{session_id}/landmarks.jpg'
             })
-            
+
         except Exception as e:
             # Clean up on error
             if os.path.exists(session_folder):
                 shutil.rmtree(session_folder)
             raise e
-            
+
     except Exception as e:
         print(f"Processing error: {e}")
         return jsonify({'error': str(e)}), 500
@@ -162,7 +162,7 @@ def download_file(session_id, filename):
         file_path = os.path.join(RESULTS_FOLDER, session_id, filename)
         if not os.path.exists(file_path):
             return jsonify({'error': 'File not found'}), 404
-        
+
         return send_file(file_path, as_attachment=True)
     except Exception as e:
         return jsonify({'error': str(e)}), 500

@@ -70,14 +70,14 @@ def generate_binary_mask(folder, mask):
 
 def run_inpainting_process(folder, photo, binary_mask, landmark_txt):
     """Run the inpainting process and return the result path."""
-    
+
     # Path to the config file (adjust this path as needed)
     CONFIG_PATH = os.path.join(os.path.dirname(__file__), '..', 'checkpoints', 'config.yml')
-    
+
     # Check if config exists
     if not os.path.exists(CONFIG_PATH):
         raise FileNotFoundError(f"Config file not found at {CONFIG_PATH}")
-    
+
     with tempfile.TemporaryDirectory() as tmp:
         # temp subdirs
         photos_dir    = os.path.join(tmp,'photos');    os.makedirs(photos_dir)
@@ -93,9 +93,20 @@ def run_inpainting_process(folder, photo, binary_mask, landmark_txt):
         with open(CONFIG_PATH) as f:
             cfg = yaml.safe_load(f)
 
-        cfg['TEST_INPAINT_IMAGE_FLIST']    = [os.path.join(photos_dir, photo)]
-        cfg['TEST_MASK_FLIST']             = [os.path.join(masks_dir, binary_mask)]
-        cfg['TEST_INPAINT_LANDMARK_FLIST'] = [os.path.join(landmarks_dir, landmark_txt)]
+        # Create file lists (text files containing file paths) - this is how the original wrapper works
+        def make_flist(tmp_dir, name, src_dir, filename):
+            p = os.path.join(tmp_dir, name)
+            with open(p, 'w') as f:
+                f.write(os.path.join(src_dir, filename) + '\n')
+            return p
+
+        image_flist = make_flist(tmp, 'image_flist.txt', photos_dir, photo)
+        mask_flist = make_flist(tmp, 'mask_flist.txt', masks_dir, binary_mask)
+        landmark_flist = make_flist(tmp, 'landmark_flist.txt', landmarks_dir, landmark_txt)
+
+        cfg['TEST_INPAINT_IMAGE_FLIST'] = image_flist
+        cfg['TEST_MASK_FLIST'] = mask_flist
+        cfg['TEST_INPAINT_LANDMARK_FLIST'] = landmark_flist
 
         # write temp config
         tmp_cfg = os.path.join(tmp,'config.yml')
@@ -105,40 +116,51 @@ def run_inpainting_process(folder, photo, binary_mask, landmark_txt):
         # backup & overwrite
         backup = CONFIG_PATH + '.bak'
         shutil.copy(CONFIG_PATH, backup)
-        
+
         try:
             shutil.copy(tmp_cfg, CONFIG_PATH)
-            
+
             # Change to the directory containing test.py before running
             original_cwd = os.getcwd()
-            test_py_dir = os.path.dirname(CONFIG_PATH)
+            test_py_dir = os.path.dirname(os.path.dirname(CONFIG_PATH))  # Go up to root directory
             os.chdir(test_py_dir)
-            
-            result = subprocess.run(['python3', 'test.py'], 
-                                  capture_output=True, text=True, check=True)
-            
+
+            print(f"Running test.py from {test_py_dir}")
+            result = subprocess.run(['python3', 'test.py'],
+                                  capture_output=True, text=True)
+
+            # Log the output for debugging
+            print("test.py stdout:", result.stdout)
+            print("test.py stderr:", result.stderr)
+            print("test.py return code:", result.returncode)
+
+            if result.returncode != 0:
+                raise RuntimeError(f"test.py failed with return code {result.returncode}. stderr: {result.stderr}")
+
             os.chdir(original_cwd)
-            
-            # Find the generated result file
-            # This depends on how your test.py saves results
-            # Adjust the path pattern based on your actual output structure
-            results_pattern = os.path.join(test_py_dir, 'results', '**', '*.jpg')
-            import glob
-            result_files = glob.glob(results_pattern, recursive=True)
-            
+
+            # Find the generated result file in the results/inpaint/result directory
+            results_dir = os.path.join(test_py_dir, 'results', 'inpaint', 'result')
+            if not os.path.exists(results_dir):
+                raise RuntimeError(f"Results directory not found: {results_dir}")
+
+            # Look for PNG files (the model outputs PNG)
+            result_files = [f for f in os.listdir(results_dir) if f.endswith('.png')]
+
             if not result_files:
                 raise RuntimeError("No result files generated")
-            
+
             # Return the most recent result file
-            latest_result = max(result_files, key=os.path.getctime)
-            
+            latest_result = max(result_files, key=lambda f: os.path.getctime(os.path.join(results_dir, f)))
+            latest_result_path = os.path.join(results_dir, latest_result)
+
             # Copy result to our folder
-            result_filename = f"inpainted_{photo}"
+            result_filename = f"inpainted_{os.path.splitext(photo)[0]}.png"
             result_path = os.path.join(folder, result_filename)
-            shutil.copy(latest_result, result_path)
-            
+            shutil.copy(latest_result_path, result_path)
+
             return result_path
-            
+
         finally:
             shutil.copy(backup, CONFIG_PATH)
             os.remove(backup)

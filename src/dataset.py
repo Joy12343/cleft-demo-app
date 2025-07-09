@@ -30,7 +30,7 @@ class Dataset(torch.utils.data.Dataset):
 
         # in test mode, there's a one-to-one relationship between mask and image
         # masks are loaded non random
-       
+
 
     def __len__(self):
         return len(self.data)
@@ -150,7 +150,7 @@ class Dataset(torch.utils.data.Dataset):
         if mask_type == 8:
             # load matching mask by index
             mask_path = self.mask_data[index]
-            mask = imread(mask_path)  
+            mask = imread(mask_path)
             # resize to model input
             mask = self.resize(mask, imgh, imgw, centerCrop=False)
             # if RGB, convert to grayscale
@@ -193,11 +193,19 @@ class Dataset(torch.utils.data.Dataset):
 
             if os.path.isfile(flist):
                 try:
-                    return np.genfromtxt(flist, dtype=np.str, encoding='utf-8')
+                    result = np.genfromtxt(flist, dtype=str, encoding='utf-8')
+                    # Convert numpy array to list
+                    if isinstance(result, np.ndarray):
+                        # Handle single entry (0-dim array)
+                        if result.ndim == 0:
+                            return [str(result)]
+                        return result.tolist()
+                    else:
+                        return [str(result)]
                 except Exception as e:
                     print(e)
                     return [flist]
-        
+
         return []
 
     def create_iterator(self, batch_size):
