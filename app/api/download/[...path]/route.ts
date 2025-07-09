@@ -1,9 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
 
-export async function GET(request: NextRequest, { params }: { params: { path: string[] } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
   try {
-    const sessionId = params.path[0]
-    const filename = params.path[1]
+    const { path } = await params
+    const sessionId = path[0]
+    const filename = path[1]
 
     const response = await fetch(`http://localhost:5000/api/download/${sessionId}/${filename}`)
 
